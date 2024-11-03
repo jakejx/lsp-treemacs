@@ -776,8 +776,8 @@ implementations automatically."
 
 ;; Call hierarchy.
 
-(lsp-defun lsp-treemacs--call-hierarchy-ret-action ((&CallHierarchyItem :uri :selection-range (&Range :start)))
-  "Build the ret action for a call hierarchy item using URI and START range."
+(lsp-defun lsp-treemacs--call-hierarchy-ret-action ((&CallHierarchyItem :uri :selection-range) [(&Range :start)])
+  "Build the ret action for a call hierarchy item using URI. START is the selection range."
   (lsp-treemacs--open-file-in-mru (lsp--uri-to-path uri))
   (goto-char (lsp--position-to-point start))
   (run-hooks 'xref-after-jump-hook))
@@ -793,7 +793,10 @@ implementations automatically."
           callback
           (seq-map
            (-lambda (node)
-             (-let* (((child-item &as &CallHierarchyItem :_name :kind :_detail? :_uri :selection-range (&Range :_start))
+             (-let* ((ranges (if outgoing
+                                 (lsp:call-hierarchy-outgoing-call-from-ranges node)
+                               (lsp:call-hierarchy-incoming-call-from-ranges node)))
+                     ((child-item &as &CallHierarchyItem :_name :kind :_detail? :_uri :selection-range (&Range :_start))
                       (if outgoing
                           (lsp:call-hierarchy-outgoing-call-to node)
                         (lsp:call-hierarchy-incoming-call-from node)))
@@ -804,7 +807,7 @@ implementations automatically."
                      :children-async (-partial #'lsp-treemacs--call-hierarchy-children buffer method outgoing)
                      :ret-action (lambda (&rest _)
                                    (interactive)
-                                   (lsp-treemacs--call-hierarchy-ret-action child-item))
+                                   (lsp-treemacs--call-hierarchy-ret-action child-item ranges))
                      :item child-item)))
            result)))
        :mode 'detached))))
@@ -822,7 +825,7 @@ With a prefix argument, show the outgoing call hierarchy."
      (display-buffer-in-side-window
       (lsp-treemacs-render
        (seq-map
-        (-lambda ((item &as &CallHierarchyItem :kind :name))
+        (-lambda ((item &as &CallHierarchyItem :kind :name :range))
           (list :label (lsp-render-symbol item t)
                 :key name
                 :icon (lsp-treemacs-symbol-kind->icon kind)
@@ -835,7 +838,7 @@ With a prefix argument, show the outgoing call hierarchy."
                                  outgoing)
                 :ret-action (lambda (&rest _)
                               (interactive)
-                              (lsp-treemacs--call-hierarchy-ret-action item))
+                              (lsp-treemacs--call-hierarchy-ret-action item (vector range)))
                 :item item))
         (lsp-request "textDocument/prepareCallHierarchy"
                      (lsp--text-document-position-params)))
